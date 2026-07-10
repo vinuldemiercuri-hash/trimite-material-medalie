@@ -1,0 +1,32 @@
+name: Trimite PDF automat
+
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+jobs:
+  trimite:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Instaleaza dependente
+        run: pip install gspread google-auth
+
+      - name: Creeaza fisierul de credentiale Google
+        run: |
+          echo '${{ secrets.GOOGLE_SERVICE_ACCOUNT_JSON }}' > service_account.json
+
+      - name: Ruleaza scriptul de trimitere
+        env:
+          GOOGLE_SHEET_ID: ${{ secrets.GOOGLE_SHEET_ID }}
+          SMTP2GO_USER: ${{ secrets.SMTP2GO_USER }}
+          SMTP2GO_PASS: ${{ secrets.SMTP2GO_PASS }}
+        run: python send_pdf.py
