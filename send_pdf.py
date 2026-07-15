@@ -68,28 +68,50 @@ def main():
     headers = sheet.row_values(1)
     cols = get_col_indexes(headers)
 
+    # ─── ANTI-DUPLICAT: colectam toate emailurile deja trimise sau invalidate ───
+    processed_emails = set()
+    for row in records:
+        e = str(row.get("Email", "")).strip().lower()
+        t = str(row.get("PDF_Trimis", "")).strip()
+        if e and (t == "Da" or t == "Invalid"):
+            processed_emails.add(e)
+
     for idx, row in enumerate(records, start=2):
         email = str(row.get("Email", "")).strip()
+        email_lower = email.lower()
         trimis = str(row.get("PDF_Trimis", "")).strip()
 
-        inc_raw = row.get("Incercari", "")
-        incercari = int(inc_raw) if str(inc_raw).strip() else 0
-
+        # Skip gol sau deja marcat pe acest rand
         if not email or trimis == "Da" or trimis == "Invalid":
             continue
 
+        # ─── ANTI-DUPLICAT: daca emailul a fost deja trimis/invalidat in alt rand, sarim ───
+        if email_lower in processed_emails:
+            print(f"{email} -> Duplicat (deja trimis sau invalid in alta inregistrare), marchez Da")
+            sheet.update_cell(idx, cols["pdf"], "Da")
+            continue
+
+        # Citeste numarul de incercari (gol = 0)
+        inc_raw = row.get("Incercari", "")
+        incercari = int(inc_raw) if str(inc_raw).strip() else 0
+
+        # Safety: daca incercarile au ajuns deja la 2 dar nu e marcat Invalid
         if incercari >= 2:
             if trimis != "Invalid":
                 sheet.update_cell(idx, cols["pdf"], "Invalid")
+                processed_emails.add(email_lower)
                 print(f"{email} -> Invalid (deja 2 incercari esuate)")
             continue
 
+        # ─── Trimite emailul ───
         try:
             print(f"Trimit catre {email} ... (incercarea {incercari + 1})")
             trimite_email(email)
 
+            # Succes: marcheaza Da, sterge incercarile, adauga in setul anti-duplicat
             sheet.update_cell(idx, cols["pdf"], "Da")
             sheet.update_cell(idx, cols["incercari"], "")
+            processed_emails.add(email_lower)
             print(f"{email} -> Trimis cu succes")
 
             time.sleep(2)
@@ -99,8 +121,10 @@ def main():
             incercari += 1
             sheet.update_cell(idx, cols["incercari"], incercari)
 
+            # Esec la a 2-a incercare -> scoate din flux permanent
             if incercari >= 2:
                 sheet.update_cell(idx, cols["pdf"], "Invalid")
+                processed_emails.add(email_lower)
                 print(f"{email} -> Invalid (2 esecuri, scos din flux)")
             else:
                 print(f"{email} -> Retry programat (incercarea {incercari})")
